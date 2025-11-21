@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบทำนายและวิเคราะห์ Fibonacci (2-6 หลัก)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+Thai:wght@100..900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans Thai', 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback } = React;
+
+        // =============================================================================
+        // 1. Core Fibonacci Utilities and Algorithms
+        // =============================================================================
+
+        const MAX_TARGET = 999999;
+
+        const generateFibonacciSequence = (limitValue) => {
+            const fib = [1, 2];
+            if (limitValue <= 2) return [1, 2].filter(f => f <= limitValue);
+
+            let f_n = 2;
+            let f_n_minus_1 = 1;
+
+            while (f_n + f_n_minus_1 <= limitValue) {
+                const next_f = f_n + f_n_minus_1;
+                fib.push(next_f);
+                f_n_minus_1 = f_n;
+                f_n = next_f;
+            }
+            return fib;
+        };
+
+        const FIBONACCI_SEQ = generateFibonacciSequence(MAX_TARGET + 100000);
+        const MAX_FIB_VALUE = FIBONACCI_SEQ[FIBONACCI_SEQ.length - 1];
+
+        // 14 วิธีการสร้างลำดับ Fibonacci
+        const CONSTRUCTION_METHODS = [
+            { id: 'greedy', name: 'Greedy (Zeckendorf)', weight: 10 },
+            { id: 'smallest_first', name: 'เริ่มจากตัวเล็ก', weight: 8 },
+            { id: 'largest_gap', name: 'ช่องว่างใหญ่สุด', weight: 7 },
+            { id: 'balanced', name: 'สมดุลย์', weight: 6 },
+            { id: 'prime_fib', name: 'เลขเฉพาะ Fib', weight: 5 },
+            { id: 'even_fib', name: 'เลขคู่ Fib', weight: 5 },
+            { id: 'odd_fib', name: 'เลขคี่ Fib', weight: 5 },
+            { id: 'golden_ratio', name: 'Golden Ratio', weight: 6 },
+            { id: 'lucas_adjusted', name: 'Lucas Adjusted', weight: 4 },
+            { id: 'alternating', name: 'สลับตำแหน่ง', weight: 4 },
+            { id: 'minimal_count', name: 'จำนวนตัวน้อย', weight: 7 },
+            { id: 'maximal_count', name: 'จำนวนตัวมาก', weight: 3 },
+            { id: 'fibonacci_index', name: 'Fibonacci Index', weight: 5 },
+            { id: 'composite_method', name: 'วิธีผสม', weight: 6 }
+        ];
+
+        const getZeckendorfRepresentation = (target, fibs) => {
+            let remaining = target;
+            const representation = [];
+            const fibs_desc = [...fibs].filter(f => f <= target).sort((a, b) => b - a);
+
+            for (const fib of fibs_desc) {
+                if (remaining >= fib) {
+                    representation.push(fib);
+                    remaining -= fib;
+                }
+            }
+            return representation.sort((a, b) => b - a);
+        };
+
+        // วิธีการสร้างแบบต่างๆ
+        const constructByMethod = (target, fibs, methodId) => {
+            switch(methodId) {
+                case 'greedy':
+                    return getZeckendorfRepresentation(target, fibs);
+                
+                case 'smallest_first':
+                    let remaining = target;
+                    const result = [];
+                    const fibs_asc = [...fibs].filter(f => f <= target).sort((a, b) => a - b);
+                    for (const fib of fibs_asc) {
+                        while (remaining >= fib) {
+                            result.push(fib);
+                            remaining -= fib;
+                            if (remaining === 0) break;
+                        }
+                        if (remaining === 0) break;
+                    }
+                    return result.sort((a, b) => b - a);
+                
+                case 'largest_gap':
+                    const greedy = getZeckendorfRepresentation(target, fibs);
+                    if (greedy.length < 2) return greedy;
+                    // หาช่องว่างใหญ่สุดแล้วแทนที่ด้วย 2 ตัวที่เล็กกว่า
+                    let maxGap = 0;
+                    let gapIndex = 0;
+                    for (let i = 0; i < greedy.length - 1; i++) {
+                        const gap = greedy[i] - greedy[i+1];
+                        if (gap > maxGap) {
+                            maxGap = gap;
+                            gapIndex = i;
+                        }
+                    }
+                    const modified = [...greedy];
+                    const largerFib = modified[gapIndex];
+                    const smallerFib = modified[gapIndex + 1];
+                    const sum = largerFib + smallerFib;
+                    const nextLarger = fibs.find(f => f > largerFib && f <= sum);
+                    if (nextLarger && nextLarger < sum) {
+                        modified.splice(gapIndex, 2, nextLarger, sum - nextLarger);
+                    }
+                    return modified.filter(f => f > 0).sort((a, b) => b - a);
+                
+                case 'balanced':
+                    const half = Math.floor(target / 2);
+                    const part1 = getZeckendorfRepresentation(half, fibs);
+                    const part2 = getZeckendorfRepresentation(target - half, fibs);
+                    return [...part1, ...part2].sort((a, b) => b - a);
+                
+                case 'prime_fib':
+                    const isPrime = (n) => {
+                        if (n < 2) return false;
+                        for (let i = 2; i <= Math.sqrt(n); i++) {
+                            if (n % i === 0) return false;
+                        }
+                        return true;
+                    };
+                    const primeFibs = fibs.filter(f => isPrime(f) && f <= target).sort((a, b) => b - a);
+                    let rem = target;
+                    const primeResult = [];
+                    for (const pf of primeFibs) {
+                        if (rem >= pf) {
+                            primeResult.push(pf);
+                            rem -= pf;
+                        }
+                    }
+                    if (rem > 0) {
+                        const extra = getZeckendorfRepresentation(rem, fibs);
+                        return [...primeResult, ...extra].sort((a, b) => b - a);
+                    }
+                    return primeResult;
+                
+                case 'even_fib':
+                    const evenFibs = fibs.filter(f => f % 2 === 0 && f <= target).sort((a, b) => b - a);
+                    let remEven = target;
+                    const evenResult = [];
+                    for (const ef of evenFibs) {
+                        if (remEven >= ef) {
+                            evenResult.push(ef);
+                            remEven -= ef;
+                        }
+                    }
+                    if (remEven > 0) {
+                        const extra = getZeckendorfRepresentation(remEven, fibs);
+                        return [...evenResult, ...extra].sort((a, b) => b - a);
+                    }
+                    return evenResult;
+                
+                case 'odd_fib':
+                    const oddFibs = fibs.filter(f => f % 2 === 1 && f <= target).sort((a, b) => b - a);
+                    let remOdd = target;
+                    const oddResult = [];
+                    for (const of of oddFibs) {
+                        if (remOdd >= of) {
+                            oddResult.push(of);
+                            remOdd -= of;
+                        }
+                    }
+                    if (remOdd > 0) {
+                        const extra = getZeckendorfRepresentation(remOdd, fibs);
+                        return [...oddResult, ...extra].sort((a, b) => b - a);
+                    }
+                    return oddResult;
+                
+                case 'golden_ratio':
+                    // ใช้อัตราส่วนทองในการเลือก
+                    const phi = (1 + Math.sqrt(5)) / 2;
+                    const goldenTarget = Math.round(target / phi);
+                    const golden1 = getZeckendorfRepresentation(goldenTarget, fibs);
+                    const golden2 = getZeckendorfRepresentation(target - goldenTarget, fibs);
+                    return [...golden1, ...golden2].sort((a, b) => b - a);
+                
+                case 'minimal_count':
+                    return getZeckendorfRepresentation(target, fibs); // Greedy ให้จำนวนน้อยสุด
+                
+                case 'maximal_count':
+                    // ใช้ Fib ตัวเล็กสุด
+                    const smallestFib = fibs[0]; // 1
+                    const maxResult = [];
+                    let remMax = target;
+                    while (remMax > 0) {
+                        maxResult.push(smallestFib);
+                        remMax -= smallestFib;
+                    }
+                    return maxResult.sort((a, b) => b - a);
+                
+                default:
+                    return getZeckendorfRepresentation(target, fibs);
+            }
+        };
+
+        // วิเคราะห์ความถี่ขององค์ประกอบ Fibonacci
+        const analyzeFrequency = (historicalData, fibs) => {
+            const frequency = {};
+            historicalData.forEach(num => {
+                const decomposition = getZeckendorfRepresentation(num, fibs);
+                decomposition.forEach(f => {
+                    frequency[f] = (frequency[f] || 0) + 1;
+                });
+            });
+            
+            // เรียงลำดับตามความถี่ (มากไปน้อย)
+            return Object.entries(frequency)
+                .map(([fib, count]) => ({ fib: parseInt(fib), count }))
+                .sort((a, b) => b.count - a.count);
+        };
+
+        // สร้างคาดการณ์โดยใช้ความถี่และ Greedy
+        const generatePredictions = (digits, historicalData, fibs, count = 6) => {
+            const minVal = Math.pow(10, digits - 1);
+            const maxVal = Math.pow(10, digits) - 1;
+            
+            // วิเคราะห์ความถี่
+            const frequencyData = analyzeFrequency(historicalData, fibs);
+            const topFibs = frequencyData.slice(0, 15).map(item => item.fib);
+            
+            const predictions = [];
+            const seen = new Set();
+            
+            // วิธีที่ 1: ใช้ Greedy กับ Fib ที่มีความถี่สูง
+            for (let attempt = 0; attempt < count * 3 && predictions.length < count; attempt++) {
+                const selectedFibs = [];
+                let sum = 0;
+                
+                // เลือก Fib จาก topFibs แบบสุ่ม
+                const shuffled = [...topFibs].sort(() => Math.random() - 0.5);
+                
+                for (const fib of shuffled) {
+                    if (sum + fib <= maxVal) {
+                        selectedFibs.push(fib);
+                        sum += fib;
+                    }
+                    
+                    if (sum >= minVal && sum <= maxVal) {
+                        break;
+                    }
+                }
+                
+                // ปรับให้ได้ค่าที่ถูกต้อง
+                if (sum < minVal) {
+                    const needed = minVal - sum;
+                    const additionalFib = fibs.find(f => f >= needed && sum + f <= maxVal);
+                    if (additionalFib) {
+                        selectedFibs.push(additionalFib);
+                        sum += additionalFib;
+                    }
+                } else if (sum > maxVal) {
+                    // ลดลง
+                    const excess = sum - maxVal;
+                    const toRemove = selectedFibs.find(f => f >= excess);
+                    if (toRemove) {
+                        const index = selectedFibs.indexOf(toRemove);
+                        selectedFibs.splice(index, 1);
+                        sum -= toRemove;
+                    }
+                }
+                
+                if (sum >= minVal && sum <= maxVal && !seen.has(sum)) {
+                    seen.add(sum);
+                    predictions.push({
+                        number: sum,
+                        components: selectedFibs.sort((a, b) => b - a),
+                        method: 'Greedy + Frequency',
+                        score: calculateScore(selectedFibs, frequencyData)
+                    });
+                }
+            }
+            
+            // วิธีที่ 2: ใช้วิธีการต่างๆ 14 วิธี
+            for (const method of CONSTRUCTION_METHODS) {
+                if (predictions.length >= count) break;
+                
+                for (let i = 0; i < 3; i++) {
+                    const targetNum = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
+                    
+                    if (!seen.has(targetNum)) {
+                        const components = constructByMethod(targetNum, fibs, method.id);
+                        const actualSum = components.reduce((a, b) => a + b, 0);
+                        
+                        if (actualSum >= minVal && actualSum <= maxVal && !seen.has(actualSum)) {
+                            seen.add(actualSum);
+                            predictions.push({
+                                number: actualSum,
+                                components: components.sort((a, b) => b - a),
+                                method: method.name,
+                                score: calculateScore(components, frequencyData) * (method.weight / 10)
+                            });
+                        }
+                    }
+                    
+                    if (predictions.length >= count) break;
+                }
+            }
+            
+            // เรียงตามคะแนน (สูงไปต่ำ)
+            predictions.sort((a, b) => b.score - a.score);
+            
+            return predictions.slice(0, count);
+        };
+
+        // คำนวณคะแนนจากความถี่แล้ววิธีการสร้าง
+        const calculateScore = (components, frequencyData) => {
+            let score = 0;
+            const freqMap = new Map(frequencyData.map(item => [item.fib, item.count]));
+            
+            components.forEach(fib => {
+                const freq = freqMap.get(fib) || 0;
+                score += freq;
+            });
+            
+            // โบนัส: จำนวนองค์ประกอบน้อย
+            score += (10 - components.length) * 2;
+            
+            return score;
+        };
+
+        const COLOR_PALETTE = [
+            'bg-indigo-600', 'bg-red-600', 'bg-green-600', 'bg-yellow-600',
+            'bg-pink-600', 'bg-cyan-600', 'bg-fuchsia-600', 'bg-orange-600',
+            'bg-purple-600', 'bg-blue-600', 'bg-teal-600', 'bg-rose-600'
+        ];
+
+        // =============================================================================
+        // 2. React Component
+        // =============================================================================
+
+        const App = () => {
+            const [targetInput, setTargetInput] = useState('');
+            const [digits, setDigits] = useState(3);
+            const [predictionCount, setPredictionCount] = useState(6);
+            const [historicalInput, setHistoricalInput] = useState('');
+            const [predictions, setPredictions] = useState([]);
+            const [showAnalysis, setShowAnalysis] = useState(false);
+            const [activeTab, setActiveTab] = useState('predict'); // 'predict' หรือ 'analyze'
+
+            const fibs = useMemo(() => FIBONACCI_SEQ, []);
+
+            const getColorClass = (number) => {
+                const index = fibs.indexOf(number);
+                if (index === -1) return 'bg-slate-300 text-gray-800';
+                const colorClass = COLOR_PALETTE[index % COLOR_PALETTE.length];
+                return `${colorClass} text-white font-extrabold shadow-md`;
+            };
+
+            const handleGeneratePredictions = useCallback(() => {
+                const historicalData = historicalInput
+                    .split(/[,\s\n]+/)
+                    .map(s => parseInt(s.trim()))
+                    .filter(n => !isNaN(n) && n > 0);
+
+                if (historicalData.length === 0) {
+                    alert('กรุณาป้อนข้อมูลงวดก่อนหน้า');
+                    return;
+                }
+
+                const newPredictions = generatePredictions(digits, historicalData, fibs, predictionCount);
+                setPredictions(newPredictions);
+            }, [digits, predictionCount, historicalInput, fibs]);
+
+            // วิเคราะห์ตัวเลขเดี่ยว
+            const targetNumber = useMemo(() => {
+                const cleaned = targetInput.replace(/[^0-9]/g, '');
+                const num = parseInt(cleaned, 10);
+                if (isNaN(num) || num < 1 || num > MAX_TARGET) return null;
+                return num;
+            }, [targetInput]);
+
+            const analysisResult = useMemo(() => {
+                if (targetNumber === null) return null;
+                const zeckendorf = getZeckendorfRepresentation(targetNumber, fibs);
+                return {
+                    number: targetNumber,
+                    zeckendorfRepresentation: zeckendorf,
+                    componentCount: zeckendorf.length
+                };
+            }, [targetNumber, fibs]);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4 sm:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <header className="text-center mb-8">
+                            <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-3">
+                                ระบบทำนายและวิเคราะห์ Fibonacci
+                            </h1>
+                            <p className="text-lg text-gray-600">
+                                รองรับการทำนาย 2-6 หลัก ด้วย Greedy Algorithm และการวิเคราะห์ความถี่ 14 วิธี
+                            </p>
+                            <p className="text-sm text-gray-500 mt-2">
+                                ลำดับ Fibonacci: {fibs.slice(0, 10).join(', ')}, ... ({fibs.length} ตัว)
+                            </p>
+                        </header>
+
+                        {/* Tab Navigation */}
+                        <div className="flex justify-center mb-6 space-x-4">
+                            <button
+                                onClick={() => setActiveTab('predict')}
+                                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+                                    activeTab === 'predict'
+                                        ? 'bg-indigo-600 text-white shadow-lg scale-105'
+                                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                🔮 ระบบทำนาย
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('analyze')}
+                                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+                                    activeTab === 'analyze'
+                                        ? 'bg-purple-600 text-white shadow-lg scale-105'
+                                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                📊 วิเคราะห์ตัวเลข
+                            </button>
+                        </div>
+
+                        <main className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl">
+                            {activeTab === 'predict' ? (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                จำนวนหลักที่ต้องการทำนาย
+                                            </label>
+                                            <select
+                                                value={digits}
+                                                onChange={(e) => setDigits(parseInt(e.target.value))}
+                                                className="w-full px-4 py-2 border-2 border-indigo-500 rounded-lg focus:ring-2 focus:ring-indigo-600"
+                                            >
+                                                <option value={2}>2 หลัก (10-99)</option>
+                                                <option value={3}>3 หลัก (100-999)</option>
+                                                <option value={4}>4 หลัก (1,000-9,999)</option>
+                                                <option value={5}>5 หลัก (10,000-99,999)</option>
+                                                <option value={6}>6 หลัก (100,000-999,999)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                จำนวนชุดที่ต้องการ
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="5"
+                                                max="10"
+                                                value={predictionCount}
+                                                onChange={(e) => setPredictionCount(Math.min(10, Math.max(5, parseInt(e.target.value) || 5)))}
+                                                className="w-full px-4 py-2 border-2 border-indigo-500 rounded-lg focus:ring-2 focus:ring-indigo-600"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            ข้อมูลงวดก่อนหน้า (คั่นด้วยเค้าวรรค จุลภาค หรือขึ้นบรรทัดใหม่)
+                                        </label>
+                                        <textarea
+                                            value={historicalInput}
+                                            onChange={(e) => setHistoricalInput(e.target.value)}
+                                            placeholder="ตัวอย่าง: 123, 456, 789 หรือ&#10;123&#10;456&#10;789"
+                                            className="w-full h-32 px-4 py-2 border-2 border-indigo-500 rounded-lg focus:ring-2 focus:ring-indigo-600 font-mono"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleGeneratePredictions}
+                                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+                                    >
+                                        🎯 สร้างคาดการณ์
+                                    </button>
+
+                                    {predictions.length > 0 && (
+                                        <div className="mt-8 space-y-4">
+                                            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                                                คาดการณ์งวดถัดไป ({predictions.length} ชุด)
+                                            </h2>
+                                            {predictions.map((pred, index) => (
+                                                <div
+                                                    key={index}
+                                                    className="bg-gradient-to-r from-indigo-50 to-purple-50 p-5 rounded-xl shadow-md border-l-4 border-indigo-600"
+                                                >
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <div>
+                                                            <span className="text-sm font-medium text-gray-500">
+                                                                อันดับ {index + 1}
+                                                            </span>
+                                                            <div className="text-4xl font-bold text-indigo-700 mt-1">
+                                                                {pred.number.toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-sm text-gray-500">คะแนน</div>
+                                                            <div className="text-2xl font-bold text-purple-600">
+                                                                {pred.score.toFixed(1)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mb-2">
+                                                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                                            {pred.method}
+                                                        </span>
+                                                    </div>
+                                                    <div className="font-mono text-sm flex flex-wrap items-center gap-1">
+                                                        {pred.components.map((f, i) => (
+                                                            <React.Fragment key={i}>
+                                                                <span className={`px-2 py-1 rounded-md text-sm ${getColorClass(f)}`}>
+                                                                    {f.toLocaleString()}
+                                                                </span>
+                                                                {i < pred.components.length - 1 && (
+                                                                    <span className="text-gray-600 font-bold">+</span>
+                                                                )}
+                                                            </React.Fragment>
+                                                        ))}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 mt-2">
+                                                        {pred.components.length} องค์ประกอบ
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="p-4 bg-purple-50 rounded-xl">
+                                        <label className="block text-lg font-medium text-purple-700 mb-2">
+                                            ป้อนเลขที่ต้องการวิเคราะห์ (1-999,999)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={targetInput}
+                                            onChange={(e) => {
+                                                const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+                                                setTargetInput(val);
+                                            }}
+                                            className="w-full px-4 py-3 text-3xl font-mono text-center border-2 border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-600"
+                                            placeholder="123456"
+                                            maxLength="6"
+                                        />
+                                    </div>
+
+                                    {targetNumber === null ? (
+                                        <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-xl">
+                                            <p>กรุณาป้อนตัวเลขเพื่อวิเคราะห์...</p>
+                                        </div>
+                                    ) : analysisResult ? (
+                                        <div className="space-y-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="p-4 bg-white rounded-xl shadow-lg border-l-4 border-purple-500">
+                                                    <p className="text-sm font-medium text-gray-500">ตัวเลขที่วิเคราะห์</p>
+                                                    <p className="text-3xl font-bold text-gray-900 mt-1">
+                                                        {analysisResult.number.toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                <div className="p-4 bg-white rounded-xl shadow-lg border-l-4 border-yellow-500">
+                                                    <p className="text-sm font-medium text-gray-500">จำนวนองค์ประกอบ</p>
+                                                    <p className="text-3xl font-bold text-gray-900 mt-1">
+                                                        {analysisResult.componentCount} ตัว
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-purple-600 p-5 rounded-xl shadow-xl text-white">
+                                                <p className="font-extrabold text-lg mb-3">
+                                                    การย่อยสลายแบบ Greedy (Zeckendorf)
+                                                </p>
+                                                <div className="bg-purple-700 p-3 rounded-lg flex flex-wrap items-center gap-1">
+                                                    {analysisResult.zeckendorfRepresentation.map((f, i, arr) => (
+                                                        <React.Fragment key={i}>
+                                                            <span className={`px-2 py-1 rounded-md text-base ${getColorClass(f)}`}>
+                                                                {f.toLocaleString()}
+                                                            </span>
+                                                            {i < arr.length - 1 && (
+                                                                <span className="text-white font-bold text-xl">+</span>
+                                                            )}
+                                                        </React.Fragment>
+                                                    ))}
+                                                </div>
+                                                <p className="text-sm mt-3 opacity-80">
+                                                    * วิธีสร้างที่สั้นที่สุด ไม่มีเลข Fibonacci ติดกัน
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
+                        </main>
+
+                        <footer className="mt-8 text-center text-sm text-gray-500">
+                            <p>ระบบใช้การวิเคราะห์ความถี่และอัลกอริทึม Greedy เพื่อสร้างคาดการณ์ที่มีคุณภาพ</p>
+                            <p className="mt-1">รองรับ 14 วิธีการสร้างลำดับ Fibonacci</p>
+                        </footer>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
